@@ -1,0 +1,55 @@
+import argparse  # Импортируем модуль для обработки аргументов командной строки
+import json  # Импортируем модуль для работы с JSON
+import math  # Импортируем математический модуль для вычислений
+import os  # Импортируем модуль для работы с файловой системой
+import re  # Импортируем модуль для работы с регулярными выражениями
+import subprocess  # Импортируем модуль для запуска системных процессов
+import typing as tp  # Импортируем модуль для работы с типами в Python
+from pathlib import Path  # Импортируем класс Path для работы с путями
+
+import cv2  # Импортируем библиотеку OpenCV для обработки видео и изображений
+import piexif  # Импортируем библиотеку для работы с EXIF-метаданными
+from PIL import Image  # Импортируем класс Image из библиотеки Pillow для работы с изображениями
+from tqdm import tqdm  # Импортируем библиотеку для отображения прогресса
+from datetime import datetime  # Импортируем класс для работы с датами и временем
+
+from citylens_processing.constants import EMAIL  # Импортируем константу EMAIL из модуля citylens_processing
+
+# Определяем тип данных для хранения координат GPS в формате (градусы, минуты, секунды)
+TpLatLonExif = tp.Tuple[tp.Tuple[int, int], tp.Tuple[int, int], tp.Tuple[int, int]]
+
+# Функция для извлечения GPS-данных из видеофайла с использованием exiftool
+def extract_gps_info(input_file: str, output_file: str) -> None:
+    """Извлекает GPS информацию из видеофайла с использованием exiftool и сохраняет ее в текстовый файл."""
+    command = f'exiftool -ee -n {input_file} > {output_file}'  # Формируем команду для извлечения данных
+    subprocess.run(command, shell=True, check=True)  # Запускаем команду в оболочке
+
+# Функция для извлечения кадров из видеофайла с возможностью указания FPS
+def extract_frames(video_path: str, output_folder: str, fps: float = -1) -> float:
+    if not os.path.exists(output_folder):  # Проверяем, существует ли папка для сохранения кадров
+        os.makedirs(output_folder)  # Создаем папку, если ее нет
+
+    cap = cv2.VideoCapture(video_path)  # Открываем видеофайл для обработки
+    frame_rate = cap.get(cv2.CAP_PROP_FPS)  # Получаем частоту кадров видео
+    if fps > 0:
+        interval = int(frame_rate / fps)  # Если указан fps, рассчитываем интервал для сохранения кадров
+    else:
+        interval = 1  # Если fps не указан, сохраняем каждый кадр
+
+    frame_count = 0  # Инициализируем счетчик кадров
+    saved_frame_count = 0  # Инициализируем счетчик сохраненных кадров
+
+    while cap.isOpened():  # Читаем кадры, пока видео открыто
+        ret, frame = cap.read()  # Читаем кадр из видео
+        if not ret:  # Если кадры закончились, прерываем цикл
+            break
+        if frame_count % interval == 0:  # Сохраняем кадр, если он соответствует интервалу
+            output_path = os.path.join(output_folder, f"frame_{frame_count:06d}.jpg")  # Формируем путь для кадра
+            cv2.imwrite(output_path, frame)  # Сохраняем кадр в файл
+            saved_frame_count += 1  # Увеличиваем счетчик сохраненных кадров
+        frame_count += 1  # Увеличиваем счетчик обработанных кадров
+        print(f'Extracted {saved_frame_count} frames.', end='\r')  # Выводим прогресс
+
+    cap.release()  # Закрываем видеофайл
+    print(f"Extracted {saved_frame_count} frames.")  # Выводим итоговое количество сохраненных кадров
+    return frame_rate  # Возвращаем частоту кадров видео
